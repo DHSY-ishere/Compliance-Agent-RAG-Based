@@ -1,0 +1,5 @@
+Internal Memo: Project Phoenix Initiation
+
+Project Phoenix is a critical infrastructure upgrade initiative aimed at modernizing our data centers. This project is managed by Bob Smith. 
+
+While Project Phoenix falls under the jurisdiction of the Engineering Department, it requires strict oversight from Risk Management due to the scale of the vendor contracts involved.
