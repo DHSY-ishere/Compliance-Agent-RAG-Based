@@ -18,12 +18,12 @@ class GraphState(TypedDict):
     compliance_status: str
     retry_count: int
 
-# 2. Initialize our DB and LLM
+# 1.5 Neo4j Connection
 graph = Neo4jGraph(
     url=os.environ["NEO4J_URI"],
     username=os.environ["NEO4J_USERNAME"],
     password=os.environ["NEO4J_PASSWORD"],
-    database=os.environ.get("NEO4J_DATABASE", "neo4j") # Pulls from .env, defaults to "neo4j"
+    database=os.environ.get("NEO4J_DATABASE", "neo4j")
 )
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", temperature=0)
@@ -56,7 +56,7 @@ def retrieve(state: GraphState):
          toLower(type(r)) AS rel,
          $tokens AS tokens
     WITH n, r, m, n_id, m_id, rel,
-         reduce(score = 0, token IN tokens |
+         reduce(score = 0, token IN tokens | 
            score +
            CASE
              WHEN n_id CONTAINS token OR m_id CONTAINS token OR rel CONTAINS token

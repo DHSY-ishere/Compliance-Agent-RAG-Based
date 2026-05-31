@@ -21,7 +21,7 @@ llm_transformer = LLMGraphTransformer(llm=llm)
 
 # Loading documents from a 'data' folder
 print("Loading documents from ./data directory...")
-# Ensure you create a 'data' folder and put some .txt files in it!
+# Data Ingestion
 loader = DirectoryLoader("./data", glob="**/*.txt", loader_cls=TextLoader)
 raw_documents = loader.load()
 
@@ -29,13 +29,15 @@ if not raw_documents:
     print("No documents found in ./data. Please add text files.")
     raise SystemExit(1)
 
-# Chunking for better LLM processing
+# Text Splitting
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
 documents = text_splitter.split_documents(raw_documents)
 
+# Graph Transformation
 print(f"Processing {len(documents)} chunks and extracting multi-hop relationships...")
 graph_documents = llm_transformer.convert_to_graph_documents(documents)
 
+#Data Injection
 print("Extracted nodes and relationships. Pushing to Neo4j...")
 graph.add_graph_documents(graph_documents)
 print("Data successfully injected into Neo4j! The graph is alive.")
