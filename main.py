@@ -2,6 +2,7 @@ import time
 from uuid import uuid4
 import mlflow
 from fastapi import FastAPI
+from typing import Optional
 from pydantic import BaseModel
 from agent import app as graph_agent # Import our compiled LangGraph
 
@@ -11,6 +12,7 @@ api = FastAPI(title="GraphRAG Compliance Agent")
 # Define request body structure
 class QueryRequest(BaseModel):
     question: str
+    thread_id: Optional[str] = None
 
 @api.post("/ask")
 async def ask_agent(request: QueryRequest):
@@ -21,7 +23,7 @@ async def ask_agent(request: QueryRequest):
         mlflow.log_param("question", request.question)
 
         # Executing the LangGraph loop asynchronously with checkpoint thread id
-        thread_id = str(uuid4())
+        thread_id = request.thread_id or str(uuid4())
         inputs = {"question": request.question}
         config = {"configurable": {"thread_id": thread_id}}
         final_state = await graph_agent.ainvoke(inputs, config=config)

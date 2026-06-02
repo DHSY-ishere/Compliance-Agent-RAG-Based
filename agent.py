@@ -81,6 +81,10 @@ async def generate(state: GraphState):
     context = state["context"]
 
     prompt = f"Answer the question based ONLY on this context.\nContext: {context}\nQuestion: {question}"
+
+    if state.get("compliance_status") == "FAIL":
+        prompt += "\n\nMANAGER FEEDBACK: Your previous answer failed the compliance check because it included a dollar amount. You MUST NOT include any financial figures or dollar amounts in your revised answer."
+
     response = await llm.ainvoke(prompt)
     return {"generation": response.content}
 
