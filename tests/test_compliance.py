@@ -13,6 +13,15 @@ for key in ("NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD"):
 with patch.dict(sys.modules, {"langchain_neo4j": MagicMock()}), patch("langchain_google_genai.ChatGoogleGenerativeAI"):
     import agent
 
+REAL_LLM_FLAGS_MONEY = agent.llm_flags_money  # the fixture below mocks agent.llm_flags_money
+
+
+@pytest.fixture(autouse=True)
+def no_llm_judge():
+    """Default: the LLM judge says NO, so tests exercise only the regex layer."""
+    with patch.object(agent, "llm_flags_money", return_value=False) as m:
+        yield m
+
 
 def check(text, retry_count=0):
     return agent.compliance_check({"generation": text, "retry_count": retry_count})
@@ -79,3 +88,22 @@ def test_exhausted_retries_returns_fallback_and_ends():
 
 def test_fallback_not_applied_while_retries_remain():
     assert "generation" not in check("It costs $75,000.", retry_count=agent.MAX_RETRIES - 1)
+
+
+def test_llm_judge_catches_paraphrased_amount(no_llm_judge):
+    no_llm_judge.return_value = True
+    result = check("It costs seventy-five thousand dollars-ish, roughly.")
+    assert result["compliance_status"] == "FAIL"
+    no_llm_judge.assert_called_once()
+
+
+def test_llm_judge_skipped_when_regex_already_failed(no_llm_judge):
+    check("It costs $75,000.")
+    no_llm_judge.assert_not_called()
+
+
+def test_llm_flags_money_parses_verdict():
+    for reply, expected in [("YES", True), (" yes.", True), ("NO", False), ("No money here", False)]:
+        with patch.object(agent, "judge_llm") as judge:
+            judge.invoke.return_value.text = reply
+            assert REAL_LLM_FLAGS_MONEY("x") is expected

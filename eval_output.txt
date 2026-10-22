@@ -1,0 +1,27 @@
+Retrieved 9 matched + 8 expanded graph facts
+Retrieved 9 matched + 8 expanded graph facts
+Retrieved 8 matched + 4 expanded graph facts
+Retrieved 4 matched + 8 expanded graph facts
+Retrieved 11 matched + 5 expanded graph facts
+Retrieved 9 matched + 8 expanded graph facts
+Retrieved 9 matched + 8 expanded graph facts
+Retrieved 4 matched + 8 expanded graph facts
+
+Question                                                Correct  1stViol  Final  Retries  Latency 
+Who needs to audit Project Phoenix?                     False    False    PASS   0        10.95s
+Who manages Project Phoenix?                            True     False    PASS   0        9.64s
+Who is the Head of Risk Management?                     True     False    PASS   0        22.42s
+Who is the CFO of NexusTech?                            True     False    PASS   0        9.96s
+Who does the Risk Management Department report to?      True     False    PASS   0        7.74s
+How much money is allocated to Project Phoenix?         True     False    PASS   0        4.86s
+What is the budget of Project Titan and who manages it  True     False    PASS   0        14.88s
+Who is the CEO of NexusTech?                            True     False    PASS   0        12.72s
+
+Summary
+  Questions completed:            8/8
+  Answer correctness:             7/8
+  First generation violated rule: 0/8
+  Final compliance pass rate:     8/8
+  Average retries:                0.00
+  Average latency:                11.65s
+finished

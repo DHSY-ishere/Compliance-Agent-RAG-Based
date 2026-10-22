@@ -16,8 +16,14 @@ graph = Neo4jGraph(
     database=os.environ.get("NEO4J_DATABASE", "neo4j")
 )
 
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", temperature=0)
-llm_transformer = LLMGraphTransformer(llm=llm)
+llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash-lite", temperature=0)
+llm_transformer = LLMGraphTransformer(
+    llm=llm,
+    additional_instructions=(
+        "Always preserve monetary amounts. Represent each one as a relationship (e.g. HAS_BUDGET or ALLOCATED) "
+        "from the project or policy to a node whose id is the exact amount text, such as '$75,000'."
+    ),
+)
 
 # Loading documents from a 'data' folder
 print("Loading documents from ./data directory...")

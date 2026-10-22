@@ -5,30 +5,28 @@ Usage: python eval.py [--delay SECONDS]   (needs live Neo4j + Gemini credentials
 import argparse
 import asyncio
 import json
-import re
 import time
 from uuid import uuid4
 
-from agent import app, MONEY_PATTERNS
-
-
-def has_money(text):
-    return any(re.search(p, text, re.IGNORECASE) for p in MONEY_PATTERNS)
+from agent import app
 
 
 async def run_question(question):
     inputs = {"question": question, "retry_count": 0, "compliance_status": "", "generation": "", "context": ""}
     config = {"configurable": {"thread_id": str(uuid4())}}  # fresh thread per question
-    first_generation, final = None, {}
+    first_generation, first_status, final = None, None, {}
     start = time.time()
     # stream_mode="updates" yields {node_name: state_update}, letting us see the first generate output
     async for update in app.astream(inputs, config=config, stream_mode="updates"):
         for node, delta in update.items():
             if node == "generate" and first_generation is None:
                 first_generation = delta["generation"]
+            if node == "compliance" and first_status is None:
+                first_status = delta["compliance_status"]  # the checker's verdict on the FIRST generation
             final.update(delta)
     return {
         "first_generation": first_generation or "",
+        "first_violation": first_status == "FAIL",
         "answer": final.get("generation", ""),
         "status": final.get("compliance_status", ""),
         "retries": final.get("retry_count", 0),
@@ -42,14 +40,22 @@ async def main(delay):
 
     rows = []
     for item in golden:
-        try:
-            r = await run_question(item["question"])
-        except Exception as e:  # e.g. rate limit / bad credentials: record and continue
-            print(f"ERROR on {item['question']!r}: {e}")
+        r = None
+        for attempt in range(4):
+            try:
+                r = await run_question(item["question"])
+                break
+            except Exception as e:  # rate limit / bad credentials: retry 429s, otherwise record and continue
+                if "429" in str(e) and attempt < 3:
+                    print("Rate limited (free tier is 5 requests/min); waiting 40s...")
+                    await asyncio.sleep(40)
+                    continue
+                print(f"ERROR on {item['question']!r}: {str(e)[:200]}")
+                break
+        if r is None:
             continue
         r["question"] = item["question"]
         r["correct"] = any(e.lower() in r["answer"].lower() for e in item["expected"])
-        r["first_violation"] = has_money(r["first_generation"])
         rows.append(r)
         await asyncio.sleep(delay)
 

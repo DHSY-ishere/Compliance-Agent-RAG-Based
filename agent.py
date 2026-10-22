@@ -26,7 +26,10 @@ graph = Neo4jGraph(
     database=os.environ.get("NEO4J_DATABASE", "neo4j")
 )
 
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, max_retries=0)
+llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash-lite", temperature=0, max_retries=0)
+
+# Small, cheap model used only as a second-layer compliance judge (see llm_flags_money)
+judge_llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash-lite", temperature=0, max_retries=0)
 
 MAX_RETRIES = 3
 FALLBACK_ANSWER = "I can't answer that without disclosing restricted financial information"
@@ -81,9 +84,21 @@ def retrieve(state: GraphState):
     """
     result = graph.query(query, params={"tokens": tokens, "limit": 20})
 
-    # Format the graph output into readable text context
-    context = "\n".join([f"{r['source']} {r['relationship']} {r['target']}" for r in result])
-    print(f"Retrieved {len(result)} graph facts")
+    # One-hop expansion: also pull edges touching the nodes of the matched facts, so
+    # multi-hop questions (project -> role -> person) get the second hop.
+    node_ids = list({r[k] for r in result for k in ("source", "target")})
+    expand_query = """
+    MATCH (n)-[r]->(m)
+    WHERE n.id IN $ids OR m.id IN $ids
+    RETURN n.id AS source, type(r) AS relationship, m.id AS target
+    LIMIT $limit
+    """
+    expanded = graph.query(expand_query, params={"ids": node_ids, "limit": 40}) if node_ids else []
+
+    # Matched facts first, then expansion facts; dedupe while keeping order.
+    facts = list(dict.fromkeys(f"{r['source']} {r['relationship']} {r['target']}" for r in result + expanded))
+    context = "\n".join(facts)
+    print(f"Retrieved {len(result)} matched + {len(facts) - len(result)} expanded graph facts")
     return {"context": context}
 
 async def generate(state: GraphState):
@@ -101,13 +116,24 @@ async def generate(state: GraphState):
         prompt += "\n\nMANAGER FEEDBACK: Your previous answer failed the compliance check because it included a dollar amount. You MUST NOT include any financial figures or dollar amounts in your revised answer."
 
     response = await llm.ainvoke(prompt)
-    return {"generation": response.content}
+    return {"generation": response.text}  # .text flattens list-style content blocks to a plain string
+
+def llm_flags_money(text: str) -> bool:
+    """Second layer: ask a small LLM whether the text states a monetary amount in ANY form
+    (words, shorthand, other currencies). Catches what the regex patterns miss."""
+    verdict = judge_llm.invoke(
+        "Does the following text state a specific monetary amount or financial figure in any form "
+        "(digits, words like 'seventy-five thousand', shorthand, any currency)? "
+        "Answer with exactly one word: YES or NO.\n\nText: " + text
+    ).text
+    return verdict.strip().upper().startswith("YES")
 
 def compliance_check(state: GraphState):
     print("---NODE: CHECKING COMPLIANCE---")
     generation = state["generation"]
 
-    has_money = any(re.search(p, generation, re.IGNORECASE) for p in MONEY_PATTERNS)
+    # Cheap deterministic regex first; the LLM judge only runs if the regex found nothing.
+    has_money = any(re.search(p, generation, re.IGNORECASE) for p in MONEY_PATTERNS) or llm_flags_money(generation)
     status = "FAIL" if has_money else "PASS"
     retry_count = state.get("retry_count", 0) + (1 if status == "FAIL" else 0)
 
