@@ -6,7 +6,9 @@ services:
     container_name: graphrag-backend
     command: uvicorn main:api --host 0.0.0.0 --port 8000
     ports:
-      - "8000:8000"
+      - "8080:8000"
+    volumes:
+      - ./:/app
 
   frontend:
     build:
@@ -20,3 +22,14 @@ services:
       - backend
     ports:
       - "8501:8501"
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: graphrag-mlflow
+    command: mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./:/app

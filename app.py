@@ -175,11 +175,21 @@ if prompt:
                     "thread_id": thread_id,
                 }
             )
-        except requests.exceptions.RequestException:
-            error_message = (
-                "Backend is currently unreachable. Confirm FastAPI is running at "
-                f"`{BACKEND_URL}` and try again."
-            )
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_detail = e.response.json().get("detail", e.response.text)
+                    error_message = f"Backend Error: {error_detail}"
+                except ValueError:
+                    error_message = f"Backend Error: {e.response.text}"
+            else:
+                if isinstance(e, requests.exceptions.Timeout):
+                    error_message = f"Backend Timeout: The request took longer than {REQUEST_TIMEOUT_SECONDS}s. This usually happens when the backend is retrying a rate-limited API."
+                elif isinstance(e, requests.exceptions.ConnectionError):
+                    error_message = f"Backend Connection Error: Could not connect to {BACKEND_URL}. Check if the backend is running."
+                else:
+                    error_message = f"Backend is unreachable. Error: {type(e).__name__} - {str(e)}"
+                    
             st.error(error_message)
             st.session_state.messages.append(
                 {

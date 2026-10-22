@@ -26,7 +26,18 @@ graph = Neo4jGraph(
     database=os.environ.get("NEO4J_DATABASE", "neo4j")
 )
 
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", temperature=0)
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, max_retries=0)
+
+MAX_RETRIES = 3
+FALLBACK_ANSWER = "I can't answer that without disclosing restricted financial information"
+
+# Each pattern flags one way of writing a money amount (matched case-insensitively).
+MONEY_PATTERNS = [
+    r"\$\s?\d",                                                    # $75,000  $75000  $1.5  and shorthand like $75k / $2M
+    r"₹\s?\d",                                                      # rupee symbol: ₹50,000
+    r"\b(?:rs\.?|inr|usd)\s?\d",                                    # code before number: Rs 500, Rs. 5,00,000, INR 5000, USD 75,000
+    r"\d\s?(?:k|m|mm|bn|thousand|million|billion)?\s?(?:dollars|usd|rupees|inr)\b",  # number before word: 75,000 dollars, 75k USD
+]
 
 # --- NODES ---
 
@@ -80,7 +91,11 @@ async def generate(state: GraphState):
     question = state["question"]
     context = state["context"]
 
-    prompt = f"Answer the question based ONLY on this context.\nContext: {context}\nQuestion: {question}"
+    prompt = (
+        "Answer the question based ONLY on this context. "
+        "Never include financial figures or dollar amounts.\n"
+        f"Context: {context}\nQuestion: {question}"
+    )
 
     if state.get("compliance_status") == "FAIL":
         prompt += "\n\nMANAGER FEEDBACK: Your previous answer failed the compliance check because it included a dollar amount. You MUST NOT include any financial figures or dollar amounts in your revised answer."
@@ -92,13 +107,16 @@ def compliance_check(state: GraphState):
     print("---NODE: CHECKING COMPLIANCE---")
     generation = state["generation"]
 
-    dollar_amount_pattern = r"\$\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?"
-    has_dollar_amount = bool(re.search(dollar_amount_pattern, generation))
-    status = "FAIL" if has_dollar_amount else "PASS"
+    has_money = any(re.search(p, generation, re.IGNORECASE) for p in MONEY_PATTERNS)
+    status = "FAIL" if has_money else "PASS"
     retry_count = state.get("retry_count", 0) + (1 if status == "FAIL" else 0)
 
     print(f"Compliance Status: {status}")
-    return {"compliance_status": status, "retry_count": retry_count}
+    update = {"compliance_status": status, "retry_count": retry_count}
+    if status == "FAIL" and retry_count > MAX_RETRIES:
+        # Retries exhausted: never surface the non-compliant text; status stays FAIL.
+        update["generation"] = FALLBACK_ANSWER
+    return update
 
 # --- CONDITIONAL EDGE LOGIC ---
 
@@ -106,7 +124,7 @@ def route_compliance(state: GraphState):
     if state["compliance_status"] == "PASS":
         print("---ROUTE: COMPLIANT, ENDING---")
         return "end"
-    if state.get("retry_count", 0) > 3:
+    if state.get("retry_count", 0) > MAX_RETRIES:
         print("---ROUTE: MAX RETRIES EXCEEDED, ENDING---")
         return "end"
     else:
