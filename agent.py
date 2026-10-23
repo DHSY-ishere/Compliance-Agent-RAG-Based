@@ -118,22 +118,22 @@ async def generate(state: GraphState):
     response = await llm.ainvoke(prompt)
     return {"generation": response.text}  # .text flattens list-style content blocks to a plain string
 
-def llm_flags_money(text: str) -> bool:
+async def llm_flags_money(text: str) -> bool:
     """Second layer: ask a small LLM whether the text states a monetary amount in ANY form
     (words, shorthand, other currencies). Catches what the regex patterns miss."""
-    verdict = judge_llm.invoke(
+    response = await judge_llm.ainvoke(  # async so the event loop isn't blocked while waiting on the model
         "Does the following text state a specific monetary amount or financial figure in any form "
         "(digits, words like 'seventy-five thousand', shorthand, any currency)? "
         "Answer with exactly one word: YES or NO.\n\nText: " + text
-    ).text
-    return verdict.strip().upper().startswith("YES")
+    )
+    return response.text.strip().upper().startswith("YES")
 
-def compliance_check(state: GraphState):
+async def compliance_check(state: GraphState):
     print("---NODE: CHECKING COMPLIANCE---")
     generation = state["generation"]
 
     # Cheap deterministic regex first; the LLM judge only runs if the regex found nothing.
-    has_money = any(re.search(p, generation, re.IGNORECASE) for p in MONEY_PATTERNS) or llm_flags_money(generation)
+    has_money = any(re.search(p, generation, re.IGNORECASE) for p in MONEY_PATTERNS) or await llm_flags_money(generation)
     status = "FAIL" if has_money else "PASS"
     retry_count = state.get("retry_count", 0) + (1 if status == "FAIL" else 0)
 

@@ -1,7 +1,8 @@
 """Unit tests for compliance_check and route_compliance. No LLM or Neo4j calls."""
+import asyncio
 import os
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -19,12 +20,12 @@ REAL_LLM_FLAGS_MONEY = agent.llm_flags_money  # the fixture below mocks agent.ll
 @pytest.fixture(autouse=True)
 def no_llm_judge():
     """Default: the LLM judge says NO, so tests exercise only the regex layer."""
-    with patch.object(agent, "llm_flags_money", return_value=False) as m:
+    with patch.object(agent, "llm_flags_money", new=AsyncMock(return_value=False)) as m:
         yield m
 
 
 def check(text, retry_count=0):
-    return agent.compliance_check({"generation": text, "retry_count": retry_count})
+    return asyncio.run(agent.compliance_check({"generation": text, "retry_count": retry_count}))
 
 
 def test_pass_case():
@@ -105,5 +106,5 @@ def test_llm_judge_skipped_when_regex_already_failed(no_llm_judge):
 def test_llm_flags_money_parses_verdict():
     for reply, expected in [("YES", True), (" yes.", True), ("NO", False), ("No money here", False)]:
         with patch.object(agent, "judge_llm") as judge:
-            judge.invoke.return_value.text = reply
-            assert REAL_LLM_FLAGS_MONEY("x") is expected
+            judge.ainvoke = AsyncMock(return_value=MagicMock(text=reply))
+            assert asyncio.run(REAL_LLM_FLAGS_MONEY("x")) is expected
